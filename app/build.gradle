@@ -11,8 +11,8 @@ android {
         applicationId "com.jovan.vijesti"
         minSdk 23
         targetSdk 34
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 3
+        versionName "1.2.0"
     }
 
     signingConfigs {
@@ -35,4 +35,8 @@ android {
     }
     kotlinOptions { jvmTarget = '17' }
     sourceSets { main { java.srcDirs += 'src/main/kotlin' } }
+}
+
+dependencies {
+    implementation 'org.jsoup:jsoup:1.15.3'
 }

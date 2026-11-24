@@ -33,6 +33,10 @@ class Prikaz(ctx: Context) : View(ctx) {
     var osvjezeno = 0L
     var greska = false
     var radi = false          // upravo preuzima
+    /** dok je otvoren čitač: vijesti stoje, nove ne preskaču na sebe */
+    var pauza = false
+        set(x) { field = x; if (!x) { prikazanaOd = System.currentTimeMillis(); invalidate() } }
+    val trenutna: Vijest? get() = lista.getOrNull(indeks)
     private var banerOd = 0L
     private var banerTekst = ""
 
@@ -70,13 +74,22 @@ class Prikaz(ctx: Context) : View(ctx) {
     // ───────────────────────── upravljanje ─────────────────────────
 
     fun postavi(nova: List<Vijest>, nove: List<Vijest>) {
+        val staraLista = lista
         val tekuca = lista.getOrNull(indeks)?.link
         lista = nova
         neuspjele.clear()
         rasporedi.keys.retainAll(nova.toSet())
         if (nova.isEmpty()) { indeks = 0; invalidate(); return }
         val najnovija = nove.maxByOrNull { it.vrijeme }
-        if (najnovija != null && nova.contains(najnovija)) {
+        if (pauza) {
+            // čita se vijest — ostani na njoj, makar ispala sa spiska
+            val k = nova.indexOfFirst { it.link == tekuca }
+            val stara = staraLista.getOrNull(indeks)
+            if (k >= 0) indeks = k
+            else if (stara != null && stara.link == tekuca) {
+                lista = nova.toMutableList().apply { add(min(indeks, size), stara) }
+            } else indeks = 0
+        } else if (najnovija != null && nova.contains(najnovija)) {
             banerTekst = "NOVA VIJEST  ·  ${najnovija.izvor.ime}  ·  ${satMin(najnovija.vrijeme)}" +
                 if (nove.size > 1) "   (+${nove.size - 1})" else ""
             banerOd = System.currentTimeMillis()
@@ -117,7 +130,8 @@ class Prikaz(ctx: Context) : View(ctx) {
             prazno(c, w, h, u, sad)
         } else {
             if (indeks >= lista.size) indeks = 0
-            if (sad - prikazanaOd >= trajanje) naprijed()
+            if (pauza) prikazanaOd = sad - min(sad - prikazanaOd, trajanje - 1)
+            else if (sad - prikazanaOd >= trajanje) naprijed()
             val cur = lista[indeks]
 
             fp.shader = null; fp.color = 0xFF101114.toInt(); c.drawRect(0f, 0f, w, h, fp)

@@ -31,13 +31,22 @@ sa starijih uređaja često vraća 403 zbog Cloudflare zaštite. Portali se mogu
 ## Upotreba
 
 - Pokreće se sama kad se tablet upali (može se isključiti)
-- **Dodir desno** — sljedeća vijest, **dodir lijevo** — prethodna
+- **Dodir po sredini** — otvara članak u ugrađenom čitaču (bez browsera)
+- **Dodir uz desnu ivicu** — sljedeća vijest, **uz lijevu ivicu** — prethodna
 - **Dugi pritisak** — podešavanja:
   - koji portali
   - koje kategorije vijesti
   - koliko dugo jedna vijest ostaje na ekranu
   - koliko često se provjerava
   - noćno zatamnjenje i pokretanje pri paljenju
+
+## Čitač članaka
+
+Tekst se preuzima sa stranice portala i čisti od reklama, dijeljenja i „pročitajte još" linkova
+(jsoup; CdM preko WordPress API-ja). Prikaz: velika fotografija sa naslovom, pa tekst u jednoj
+koloni (serif, ~70 slova u redu, krupnije za čitanje sa ~30 cm). **A− / A+** mijenja veličinu slova
+(pamti se), **✕** ili „nazad" zatvara i vraća na istu vijest. Dok je čitač otvoren vijesti se ne
+smjenjuju; posle 10 min bez dodira čitač se sam zatvori.
 
 ## Build
 

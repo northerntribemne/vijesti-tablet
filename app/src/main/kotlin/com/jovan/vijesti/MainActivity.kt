@@ -12,6 +12,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.Toast
 import org.json.JSONArray
 import java.util.Calendar
@@ -20,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap
 class MainActivity : Activity() {
 
     private lateinit var prikaz: Prikaz
+    private lateinit var koren: FrameLayout
+    private var citalac: Citalac? = null
     private lateinit var prefs: SharedPreferences
     private val h = Handler(Looper.getMainLooper())
     private var aktivan = false
@@ -48,12 +51,49 @@ class MainActivity : Activity() {
         prefs = getSharedPreferences("vijesti", MODE_PRIVATE)
         Thread { Mreza.pripremi(applicationContext) }.apply { start(); join(3000) }
         prikaz = Prikaz(this)
-        setContentView(prikaz)
+        koren = FrameLayout(this)
+        koren.addView(prikaz, FrameLayout.LayoutParams(-1, -1))
+        setContentView(koren)
         prikaz.trajanje = prefs.getInt("trajanje", 15) * 1000L
         ucitajStanje()
         prikaz.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_DOWN) dodirX = e.x; false }
-        prikaz.setOnClickListener { if (dodirX < prikaz.width * 0.3f) prikaz.nazad() else prikaz.naprijed() }
+        // lijeva ivica = nazad, desna = naprijed, sredina = otvori članak
+        prikaz.setOnClickListener {
+            when {
+                dodirX < prikaz.width * 0.22f -> prikaz.nazad()
+                dodirX > prikaz.width * 0.78f -> prikaz.naprijed()
+                else -> prikaz.trenutna?.let { otvori(it) }
+            }
+        }
         prikaz.setOnLongClickListener { podesavanja(); true }
+    }
+
+    private fun otvori(v: Vijest) {
+        if (citalac != null) return
+        prikaz.pauza = true
+        val c = Citalac(this, v) { gotovo ->
+            if (!gotovo) prikaz.visibility = View.VISIBLE   // da se vijest vidi dok čitač nestaje
+            else zatvoriCitac()
+        }
+        citalac = c
+        koren.addView(c, FrameLayout.LayoutParams(-1, -1))
+        // ispod čitača prikaz ne mora da se crta
+        h.postDelayed({ if (citalac === c) prikaz.visibility = View.INVISIBLE }, 400L)
+    }
+
+    private fun zatvoriCitac() {
+        val c = citalac ?: return
+        citalac = null
+        koren.removeView(c)
+        prikaz.visibility = View.VISIBLE
+        prikaz.pauza = false
+        sakrijSistem()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        val c = citalac
+        if (c != null) c.zatvoriSe() else @Suppress("DEPRECATION") super.onBackPressed()
     }
 
     private fun ucitajStanje() {
