@@ -17,6 +17,8 @@ Kad se pojavi nova vijest, odmah se prikaže i dobije oznaku **NOVO**. Sav tekst
   - pola sata nosi crvenu oznaku **NOVO** sa vremenom kad je stigla
 - **Bez duplikata:** ista vijest sa više portala je jedna kartica sa napomenom „piše i: Dan · Antena M"
 - **Trake na dnu:** pokazuju koja je ovo vijest od 20 i koliko još ostaje na ekranu; nove su crvene
+- **Biraš šta te zanima:** Hronika, Sport, Politika, Ekonomija i turizam, Stavovi i kolumne, Kultura,
+  Zabava i magazin, Region i svijet, Društvo, Ostalo. Rubrike svakog portala se same svrstaju u ove kategorije
 - **Sat i datum** gore desno, uz vrijeme zadnje provjere
 - **Prelazi:** slike se pretapaju, a naslov uplovi odozdo
 - **Briga o ekranu:** tekst se polako pomjera da se ekran ne „ureže"; noću (23–6 h) se ekran zatamni
@@ -32,6 +34,7 @@ sa starijih uređaja često vraća 403 zbog Cloudflare zaštite. Portali se mogu
 - **Dodir desno** — sljedeća vijest, **dodir lijevo** — prethodna
 - **Dugi pritisak** — podešavanja:
   - koji portali
+  - koje kategorije vijesti
   - koliko dugo jedna vijest ostaje na ekranu
   - koliko često se provjerava
   - noćno zatamnjenje i pokretanje pri paljenju

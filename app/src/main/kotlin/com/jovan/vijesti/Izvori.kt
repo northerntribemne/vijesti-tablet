@@ -9,11 +9,46 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
+/**
+ * Zajedničke kategorije (svaki portal svoje rubrike zove drugačije).
+ * Redoslijed je bitan: prva koja se poklopi pobjeđuje (npr. „Srbija + Hronika" → Hronika).
+ */
+enum class Kategorija(val ime: String, val korijeni: List<String>) {
+    HRONIKA("Hronika", listOf("hronik")),
+    SPORT("Sport", listOf("sport", "fudbal", "kosark", "košark", "tenis", "rukomet", "vaterpol", "odbojk", "atletik", "formul", "skijan")),
+    POLITIKA("Politika", listOf("politik", "izbor")),
+    EKONOMIJA("Ekonomija i turizam", listOf("ekonom", "turiz", "biznis", "novac", "finans")),
+    STAV("Stavovi i kolumne", listOf("stav", "kolumn", "karikatur", "anket", "intervju", "rijec", "riječ", "komentar")),
+    KULTURA("Kultura", listOf("kultur", "strip", "knjig", "pozori", "izlozb", "izložb", "umjetn")),
+    ZABAVA("Zabava i magazin", listOf("zabav", "showbiz", "magazin", "razonod", "mozaik", "astro", "horoskop", "zdravlj",
+        "bilje", "psiholog", "muzik", "film", "lifestyle", "recept", "tehnolog", "nauk")),
+    SVIJET("Region i svijet", listOf("region", "balkan", "srbij", "svijet", "evrop", "rusij", "hrvatsk", "ukrajin", "bbc", "dw", "bih")),
+    DRUSTVO("Društvo", listOf("drustv", "društv", "crna", "podgoric", "grad", "penzion", "servis", "religij", "pravoslav",
+        "vjer", "obrazov", "zdravstv", "ekolog")),
+    OSTALO("Ostalo", emptyList());
+
+    companion object {
+        /** [oznake] = nazivi rubrika i djelovi putanje (bez naslova članka). */
+        fun razvrstaj(oznake: List<String>): Kategorija {
+            val rijeci = oznake.flatMap { it.lowercase().split(Regex("[^\\p{L}\\p{N}]+")) }.filter { it.length >= 2 }
+            for (k in values()) if (k.korijeni.any { kor -> rijeci.any { r -> if (kor.length <= 3) r == kor else r.startsWith(kor) } }) return k
+            return OSTALO
+        }
+
+        /** Djelovi putanje linka, bez samog naslova (zadnji dio) i brojeva. */
+        fun putanja(link: String): List<String> {
+            val dijelovi = link.substringAfter("://").substringAfter('/').substringBefore('?')
+                .split('/').filter { it.isNotEmpty() }
+            return dijelovi.dropLast(1).filter { d -> d.length <= 30 && d.any { it.isLetter() } }
+        }
+    }
+}
+
 /** Portali sa kojih se vuku vijesti. */
 enum class Izvor(val ime: String, val boja: Int, val adresa: String, val wp: Boolean = false) {
     VIJESTI("Vijesti", 0xFFE2231A.toInt(), "https://www.vijesti.me/rss"),
     CDM("CdM", 0xFF1E5AA8.toInt(),
-        "https://www.cdm.me/wp-json/wp/v2/posts?per_page=15&_embed=wp:featuredmedia,wp:term" +
+        "https://www.cdm.me/wp-json/wp/v2/posts?per_page=30&_embed=wp:featuredmedia,wp:term" +
             "&_fields=date_gmt,title,link,excerpt,_links,_embedded", wp = true),
     DAN("Dan", 0xFF9B1B42.toInt(), "https://www.dan.co.me/feed/"),
     ANTENA("Antena M", 0xFFF08A00.toInt(), "https://rss.antenam.net/"),
@@ -29,6 +64,7 @@ class Vijest(
     val vrijeme: Long,
     val rubrika: String,
 ) {
+    var kategorija: Kategorija = Kategorija.OSTALO
     /** Kad je app prvi put vidio ovu vijest (0 = bila je tu od ranije). */
     var stigla: Long = 0L
     /** Ista vijest sa drugih portala (spojena u jednu karticu). */
@@ -37,7 +73,7 @@ class Vijest(
 
     fun uJson(): JSONObject = JSONObject().apply {
         put("i", izvor.name); put("n", naslov); put("u", uvod); put("l", link)
-        put("s", slika ?: ""); put("v", vrijeme); put("r", rubrika); put("st", stigla)
+        put("s", slika ?: ""); put("v", vrijeme); put("r", rubrika); put("st", stigla); put("k", kategorija.name)
         put("t", JSONArray(takodje.map { it.name })); put("sl", JSONArray(sviLinkovi))
     }
 
@@ -46,6 +82,7 @@ class Vijest(
             Vijest(Izvor.valueOf(o.getString("i")), o.getString("n"), o.optString("u"), o.getString("l"),
                 o.optString("s").ifEmpty { null }, o.getLong("v"), o.optString("r")).apply {
                 stigla = o.optLong("st")
+                kategorija = try { Kategorija.valueOf(o.optString("k")) } catch (_: Exception) { Kategorija.OSTALO }
                 o.optJSONArray("t")?.let { a -> for (k in 0 until a.length()) takodje.add(Izvor.valueOf(a.getString(k))) }
                 o.optJSONArray("sl")?.let { a -> sviLinkovi.clear(); for (k in 0 until a.length()) sviLinkovi.add(a.getString(k)) }
             }
@@ -68,7 +105,9 @@ object Citac {
         p.setInput(xml.trimStart().reader())
         val rez = ArrayList<Vijest>()
         var uItemu = false
-        var naslov = ""; var link = ""; var opis = ""; var datum = ""; var rubrika = ""
+        var naslov = ""; var link = ""; var opis = ""; var datum = ""
+        val rubrike = ArrayList<String>()
+        val oznake = ArrayList<String>()
         val slike = ArrayList<String>()
         var tag = ""
         while (true) {
@@ -78,7 +117,10 @@ object Citac {
                 XmlPullParser.START_TAG -> {
                     tag = p.name
                     if (tag == "item") {
-                        uItemu = true; naslov = ""; link = ""; opis = ""; datum = ""; rubrika = ""; slike.clear()
+                        uItemu = true; naslov = ""; link = ""; opis = ""; datum = ""; rubrike.clear(); oznake.clear(); slike.clear()
+                    } else if (uItemu && tag == "category") {
+                        p.getAttributeValue(null, "domain")?.let { oznake.addAll(Kategorija.putanja(it + "/x")) }
+                        rubrike.add("")
                     } else if (uItemu && (tag == "enclosure" || tag == "media:content" || tag == "media:thumbnail")) {
                         val tip = p.getAttributeValue(null, "type") ?: p.getAttributeValue(null, "medium") ?: "image"
                         p.getAttributeValue(null, "url")?.let { if (tip.startsWith("image")) slike.add(it) }
@@ -91,7 +133,7 @@ object Citac {
                         "link" -> link += t
                         "description" -> opis += t
                         "pubDate", "dc:date" -> datum += t
-                        "category" -> if (rubrika.isEmpty()) rubrika = t.trim()
+                        "category" -> if (rubrike.isNotEmpty()) rubrike[rubrike.size - 1] += t
                         "image:image" -> t.trim().let { if (it.isNotEmpty()) slike.add(it) }
                     }
                 }
@@ -103,7 +145,12 @@ object Citac {
                         if (vr > 0 && l.isNotEmpty() && naslov.isNotBlank()) {
                             val izOpisa = Regex("<img[^>]+src=\"([^\"]+)\"").find(opis)?.groupValues?.get(1)
                             val slika = (slike + listOfNotNull(izOpisa)).firstOrNull { valjanaSlika(it) }
-                            rez.add(Vijest(izvor, cisto(naslov), cisto(opis), l, slika, vr, rubrika))
+                            val r = rubrike.map { cisto(it) }.filter { it.isNotEmpty() }
+                            // za prikaz: prva rubrika koja nešto govori („Crna Gora"/„Vijesti" su preopšte)
+                            val prikaz = r.firstOrNull { it.lowercase() !in setOf("crna gora", "vijesti", "naslovna") } ?: ""
+                            rez.add(Vijest(izvor, cisto(naslov), cisto(opis), l, slika, vr, prikaz).apply {
+                                kategorija = Kategorija.razvrstaj(r + oznake + Kategorija.putanja(l))
+                            })
                         }
                     }
                     tag = ""
@@ -130,11 +177,16 @@ object Citac {
                     .firstNotNullOfOrNull { vel?.optJSONObject(it)?.optString("source_url")?.ifEmpty { null } }
                     ?: m.optString("source_url").ifEmpty { null }
             }
-            var rubrika = ""
-            emb?.optJSONArray("wp:term")?.optJSONArray(0)?.optJSONObject(0)?.let { rubrika = cisto(it.optString("name")) }
+            val rubrike = ArrayList<String>()
+            emb?.optJSONArray("wp:term")?.optJSONArray(0)?.let { a ->
+                for (k in 0 until a.length()) a.optJSONObject(k)?.let { rubrike.add(cisto(it.optString("name"))) }
+            }
+            val rubrika = rubrike.firstOrNull() ?: ""
             rez.add(Vijest(izvor, cisto(o.optJSONObject("title")?.optString("rendered") ?: ""),
                 cisto(o.optJSONObject("excerpt")?.optString("rendered") ?: ""),
-                o.optString("link"), slika, vr, rubrika))
+                o.optString("link"), slika, vr, rubrika).apply {
+                kategorija = Kategorija.razvrstaj(rubrike + Kategorija.putanja(link))
+            })
         }
         return rez.filter { it.naslov.isNotBlank() && it.link.isNotEmpty() }
     }

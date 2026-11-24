@@ -108,6 +108,11 @@ class MainActivity : Activity() {
         if (lp.screenBrightness != cilj) { lp.screenBrightness = cilj; window.attributes = lp }
     }
 
+    private fun kategorije(): Set<Kategorija> {
+        val iskljucene = prefs.getStringSet("bezKategorija", emptySet()) ?: emptySet()
+        return Kategorija.values().filter { it.name !in iskljucene }.toSet()
+    }
+
     private fun ukljuceni(): List<Izvor> {
         val iskljuceni = prefs.getStringSet("iskljuceni", emptySet()) ?: emptySet()
         return Izvor.values().filter { it.name !in iskljuceni }
@@ -138,7 +143,8 @@ class MainActivity : Activity() {
                 synchronized(sve) {
                     for (v in sve) dopune[v.link]?.let { (n, s) -> v.naslov = n; if (v.slika == null) v.slika = s }
                 }
-                lista = Citac.spoji(ArrayList(sve), 20)
+                val zeljene = kategorije()
+                lista = Citac.spoji(sve.filter { it.kategorija in zeljene }, 20)
                 for (v in lista) if (!dopune.containsKey(v.link)) {
                     Citac.dopuni(v); dopune[v.link] = Pair(v.naslov, v.slika)
                 }
@@ -189,6 +195,9 @@ class MainActivity : Activity() {
         val provjere = intArrayOf(1, 2, 3, 5, 10)
         val stavke = arrayOf(
             "Portali: " + ukljuceni().joinToString(", ") { it.ime },
+            "Kategorije: " + kategorije().let { k ->
+                if (k.size == Kategorija.values().size) "sve" else k.joinToString(", ") { it.ime }.ifEmpty { "nijedna" }
+            },
             "Svaka vijest na ekranu: ${prefs.getInt("trajanje", 15)} s",
             "Provjera novih vijesti: svakih ${minuta()} min",
             "Noćno zatamnjenje (23–6 h): " + if (prefs.getBoolean("zatamni", true)) "uključeno" else "isključeno",
@@ -201,17 +210,18 @@ class MainActivity : Activity() {
             .setItems(stavke) { _, i ->
                 when (i) {
                     0 -> izaberiPortale()
-                    1 -> izbor("Koliko dugo jedna vijest", trajanja.map { "$it sekundi" }, trajanja.indexOf(prefs.getInt("trajanje", 15))) { j ->
+                    1 -> izaberiKategorije()
+                    2 -> izbor("Koliko dugo jedna vijest", trajanja.map { "$it sekundi" }, trajanja.indexOf(prefs.getInt("trajanje", 15))) { j ->
                         prefs.edit().putInt("trajanje", trajanja[j]).apply(); prikaz.trajanje = trajanja[j] * 1000L
                     }
-                    2 -> izbor("Koliko često provjeravati", provjere.map { "svakih $it min" }, provjere.indexOf(minuta())) { j ->
+                    3 -> izbor("Koliko često provjeravati", provjere.map { "svakih $it min" }, provjere.indexOf(minuta())) { j ->
                         prefs.edit().putInt("provjera", provjere[j]).apply()
                         h.removeCallbacks(provjera); h.postDelayed(provjera, provjere[j] * 60_000L)
                     }
-                    3 -> { prefs.edit().putBoolean("zatamni", !prefs.getBoolean("zatamni", true)).apply(); svjetlina() }
-                    4 -> prefs.edit().putBoolean("boot", !prefs.getBoolean("boot", true)).apply()
-                    5 -> { Toast.makeText(this, "Provjeravam portale…", Toast.LENGTH_SHORT).show(); osvjezi() }
-                    6 -> finish()
+                    4 -> { prefs.edit().putBoolean("zatamni", !prefs.getBoolean("zatamni", true)).apply(); svjetlina() }
+                    5 -> prefs.edit().putBoolean("boot", !prefs.getBoolean("boot", true)).apply()
+                    6 -> { Toast.makeText(this, "Provjeravam portale…", Toast.LENGTH_SHORT).show(); osvjezi() }
+                    7 -> finish()
                 }
             }
             .setOnDismissListener { sakrijSistem() }
@@ -222,6 +232,27 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(naslov)
             .setSingleChoiceItems(opcije.toTypedArray(), tekuca) { d, j -> gotovo(j); d.dismiss() }
+            .setOnDismissListener { sakrijSistem() }
+            .show()
+    }
+
+    private fun izaberiKategorije() {
+        val sve = Kategorija.values()
+        val tekuce = kategorije()
+        val stanje = BooleanArray(sve.size) { sve[it] in tekuce }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Koje vijesti želiš")
+            .setMultiChoiceItems(sve.map { it.ime }.toTypedArray(), stanje) { _, j, da -> stanje[j] = da }
+            .setPositiveButton("Sačuvaj") { _, _ ->
+                if (stanje.none { it }) { Toast.makeText(this, "Bar jedna kategorija mora ostati", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                prefs.edit().putStringSet("bezKategorija", sve.filterIndexed { k, _ -> !stanje[k] }.map { it.name }.toSet()).apply()
+                // odmah skloni nepoželjne sa ekrana, pa preuzmi nove da se popuni do 20
+                val zeljene = kategorije()
+                prikaz.postavi(prikaz.lista.filter { it.kategorija in zeljene }, emptyList())
+                Toast.makeText(this, "Preuzimam vijesti iz izabranih kategorija…", Toast.LENGTH_SHORT).show()
+                osvjezi()
+            }
+            .setNegativeButton("Otkaži", null)
             .setOnDismissListener { sakrijSistem() }
             .show()
     }

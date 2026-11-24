@@ -219,10 +219,11 @@ class Prikaz(ctx: Context) : View(ctx) {
         tp.color = al(0xFFFFFFFF.toInt(), a)
         c.drawText(ime, L + 17f * u, top + 31f * u, tp)
         val x0 = rr.right + 18f * u
-        if (v.rubrika.isNotEmpty()) {
+        val rub = v.rubrika.ifEmpty { if (v.kategorija != Kategorija.OSTALO) v.kategorija.ime else "" }
+        if (rub.isNotEmpty()) {
             tp.typeface = obican; tp.textSize = 21f * u; tp.letterSpacing = 0.16f; tp.color = al(0xE6FFFFFF.toInt(), a)
             tp.setShadowLayer(6f * u, 0f, 1f * u, al(0x99000000.toInt(), a))
-            c.drawText(v.rubrika.uppercase(), x0, top + 30f * u, tp)
+            c.drawText(rub.uppercase(), x0, top + 30f * u, tp)
         }
         if (v.takodje.isNotEmpty()) {
             tp.typeface = obican; tp.textSize = 19f * u; tp.letterSpacing = 0.02f; tp.color = al(0xB3FFFFFF.toInt(), a)
