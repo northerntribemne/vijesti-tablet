@@ -28,6 +28,7 @@ class MainActivity : Activity() {
     private var aktivan = false
     @Volatile private var preuzimam = false
     private var dodirX = 0f
+    private var dodirY = 0f
 
     /** link → kad je vijest prvi put viđena (0 = bila je tu od ranije) */
     private val vidjeno = LinkedHashMap<String, Long>()
@@ -56,7 +57,29 @@ class MainActivity : Activity() {
         setContentView(koren)
         prikaz.trajanje = prefs.getInt("trajanje", 15) * 1000L
         ucitajStanje()
-        prikaz.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_DOWN) dodirX = e.x; false }
+        // povlačenje prstom lijevo/desno vrti vijesti
+        val prag = 70f * resources.displayMetrics.density
+        prikaz.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { dodirX = e.x; dodirY = e.y; false }
+                MotionEvent.ACTION_MOVE -> {
+                    // Android 6 ne poništava dugi pritisak dok prst ostaje unutar ekrana
+                    if (Math.abs(e.x - dodirX) > prag / 4 || Math.abs(e.y - dodirY) > prag / 4) prikaz.cancelLongPress()
+                    false
+                }
+                MotionEvent.ACTION_UP -> {
+                    val dx = e.x - dodirX; val dy = e.y - dodirY
+                    if (Math.abs(dx) > prag && Math.abs(dx) > Math.abs(dy) * 1.5f) {
+                        if (dx < 0) prikaz.naprijed() else prikaz.nazad()
+                        // poništi dodir da se ne računa i kao klik
+                        val c = MotionEvent.obtain(e).apply { action = MotionEvent.ACTION_CANCEL }
+                        prikaz.onTouchEvent(c); c.recycle()
+                        true
+                    } else false
+                }
+                else -> false
+            }
+        }
         // lijeva ivica = nazad, desna = naprijed, sredina = otvori članak
         prikaz.setOnClickListener {
             when {

@@ -32,7 +32,7 @@ sa starijih uređaja često vraća 403 zbog Cloudflare zaštite. Portali se mogu
 
 - Pokreće se sama kad se tablet upali (može se isključiti)
 - **Dodir po sredini** — otvara članak u ugrađenom čitaču (bez browsera)
-- **Dodir uz desnu ivicu** — sljedeća vijest, **uz lijevu ivicu** — prethodna
+- **Povlačenje prstom ulijevo** ili **dodir uz desnu ivicu** — sljedeća vijest; **udesno** ili **uz lijevu ivicu** — prethodna
 - **Dugi pritisak** — podešavanja:
   - koji portali
   - koje kategorije vijesti
