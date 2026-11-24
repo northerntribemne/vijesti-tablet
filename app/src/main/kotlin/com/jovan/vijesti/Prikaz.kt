@@ -119,56 +119,76 @@ class Prikaz(ctx: Context) : View(ctx) {
             if (indeks >= lista.size) indeks = 0
             if (sad - prikazanaOd >= trajanje) naprijed()
             val cur = lista[indeks]
-            slika(lista[(indeks + 1) % lista.size])   // unaprijed učitaj sljedeću
 
-            val prelaz = ((sad - prelazOd) / 1100f).coerceIn(0f, 1f)
+            fp.shader = null; fp.color = 0xFF101114.toInt(); c.drawRect(0f, 0f, w, h, fp)
+            val p = ((sad - prelazOd) / PRELAZ).coerceIn(0f, 1f)
             val pr = prethodna
-            if (pr != null && prelaz < 1f) {
-                kartica(c, pr, prethodnaOd, w, h, u, sad, 1f)
-                val a = glatko(prelaz)
-                val sl = c.saveLayerAlpha(0f, 0f, w, h, (a * 255).toInt())
-                kartica(c, cur, prikazanaOd, w, h, u, sad, a)
-                c.restoreToCount(sl)
+            if (pr != null && p < 1f) {
+                // slike se pretapaju; stari tekst izblijedi, pa novi uplovi odozdo
+                slikaSloj(c, pr, prethodnaOd, w, h, u, sad, 1f)
+                slikaSloj(c, cur, prikazanaOd, w, h, u, sad, glatko(p))
+                zatamnjenja(c, w, h)
+                val izlaz = 1f - glatko((p / 0.4f).coerceIn(0f, 1f))
+                if (izlaz > 0f) tekstSloj(c, pr, w, h, u, sad, izlaz, 0f)
+                val ulaz = glatko(((p - 0.35f) / 0.65f).coerceIn(0f, 1f))
+                if (ulaz > 0f) tekstSloj(c, cur, w, h, u, sad, ulaz, (1f - ulaz) * 26f * u)
             } else {
                 prethodna = null
-                kartica(c, cur, prikazanaOd, w, h, u, sad, 1f)
+                slikaSloj(c, cur, prikazanaOd, w, h, u, sad, 1f)
+                zatamnjenja(c, w, h)
+                tekstSloj(c, cur, w, h, u, sad, 1f, 0f)
             }
             segmenti(c, w, h, u, sad)
+
+            // sljedeću sliku unaprijed učitaj i pošalji u grafiku (nevidljivo, 1 piksel),
+            // da prelaz ne zastane kad se ona prvi put crta
+            slika(lista[(indeks + 1) % lista.size])?.let { nb ->
+                bp.alpha = 1; rr.set(0f, 0f, 1f, 1f); c.drawBitmap(nb, null, rr, bp); bp.alpha = 255
+            }
         }
         okvir(c, w, h, u, sad)
         baner(c, w, h, u, sad)
-        postInvalidateDelayed(40)
+        postInvalidateDelayed(33)
     }
 
+    private val PRELAZ = 1600f
     private fun glatko(t: Float) = t * t * (3 - 2 * t)
 
-    private fun kartica(c: Canvas, v: Vijest, t0: Long, w: Float, h: Float, u: Float, sad: Long, ulaz: Float) {
-        // ── slika (polagano zumiranje i klizanje — Ken Burns) ──
+    /** boja sa pomnoženom prozirnošću */
+    private fun al(boja: Int, a: Float): Int = (((boja ushr 24) * a).toInt() shl 24) or (boja and 0xFFFFFF)
+
+    /** Slika vijesti, polagano zumiranje i klizanje (Ken Burns). */
+    private fun slikaSloj(c: Canvas, v: Vijest, t0: Long, w: Float, h: Float, u: Float, sad: Long, a: Float) {
+        if (a <= 0f) return
         val bmp = slika(v)
-        val k = ((sad - t0).toFloat() / (trajanje + 1500f)).coerceIn(0f, 1f)
+        val k = ((sad - t0).toFloat() / (trajanje + PRELAZ)).coerceIn(0f, 1f)
         val smjer = (v.link.hashCode() and 3)
         if (bmp != null) {
             val s0 = max(w / bmp.width, h / bmp.height)
-            val s = s0 * (1.04f + 0.08f * k) * (1.02f - 0.02f * ulaz)
+            val s = s0 * (1.04f + 0.08f * k)
             val ox = bmp.width * s - w; val oy = bmp.height * s - h
             val fx = if (smjer and 1 == 0) 0.30f + 0.40f * k else 0.70f - 0.40f * k
             val fy = if (smjer and 2 == 0) 0.40f + 0.20f * k else 0.60f - 0.20f * k
             mat.reset(); mat.setScale(s, s); mat.postTranslate(-ox * fx, -oy * fy)
-            fp.shader = null; fp.color = 0xFF101114.toInt(); c.drawRect(0f, 0f, w, h, fp)
-            val pojava = ((sad - (ucitano[v.slika] ?: 0L)) / 600f).coerceIn(0f, 1f)
-            bp.alpha = (pojava * 255).toInt()
+            val pojava = glatko(((sad - (ucitano[v.slika] ?: 0L)) / 900f).coerceIn(0f, 1f))
+            bp.alpha = (a * pojava * 255).toInt()
             c.drawBitmap(bmp, mat, bp)
+            bp.alpha = 255
         } else {
             // nema slike: platno u boji portala sa velikim imenom kao vodenim žigom
-            fp.color = 0xFFFFFFFF.toInt()
+            fp.color = al(0xFFFFFFFF.toInt(), a)
             fp.shader = LinearGradient(0f, 0f, w, h, tamnije(v.izvor.boja, 0.55f), 0xFF0B0C10.toInt(), Shader.TileMode.CLAMP)
             c.drawRect(0f, 0f, w, h, fp); fp.shader = null
             tp.reset(); tp.isAntiAlias = true; tp.typeface = serif; tp.textSize = 260f * u
-            tp.color = 0x14FFFFFF; tp.textAlign = Paint.Align.RIGHT
+            tp.color = al(0x14FFFFFF, a); tp.textAlign = Paint.Align.RIGHT
             c.drawText(v.izvor.ime, w - 40f * u + 30f * u * (1 - k), h * 0.48f, tp)
+            tp.textAlign = Paint.Align.LEFT
         }
+    }
 
-        // ── zatamnjenja za čitljivost ──
+    /** Zatamnjenja za čitljivost — crtaju se jednom, iznad obje slike. */
+    private fun zatamnjenja(c: Canvas, w: Float, h: Float) {
+        fp.shader = null
         fp.color = 0x2E000000; c.drawRect(0f, 0f, w, h, fp)   // blago zatamni cijelu sliku (svijetle fotografije)
         fp.color = 0xFFFFFFFF.toInt()
         fp.shader = LinearGradient(0f, 0f, 0f, h * 0.36f, 0xB8000000.toInt(), 0x00000000, Shader.TileMode.CLAMP)
@@ -180,7 +200,10 @@ class Prikaz(ctx: Context) : View(ctx) {
         fp.shader = LinearGradient(0f, 0f, w * 0.75f, 0f, 0x55000000, 0x00000000, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w * 0.75f, h, fp)
         fp.shader = null
+    }
 
+    /** Portal, rubrika, vrijeme, naslov i uvod; [a] = prozirnost, [dy0] = pomak nadolje pri ulasku. */
+    private fun tekstSloj(c: Canvas, v: Vijest, w: Float, h: Float, u: Float, sad: Long, a: Float, dy0: Float) {
         val (dx, dy) = pomak(u, sad)
         c.save(); c.translate(dx, dy)
         val L = 64f * u
@@ -192,57 +215,61 @@ class Prikaz(ctx: Context) : View(ctx) {
         val iw = tp.measureText(ime)
         val top = 46f * u
         rr.set(L, top, L + iw + 34f * u, top + 44f * u)
-        fp.color = v.izvor.boja; c.drawRoundRect(rr, 8f * u, 8f * u, fp)
-        tp.color = 0xFFFFFFFF.toInt()
+        fp.color = al(v.izvor.boja, a); c.drawRoundRect(rr, 8f * u, 8f * u, fp)
+        tp.color = al(0xFFFFFFFF.toInt(), a)
         c.drawText(ime, L + 17f * u, top + 31f * u, tp)
-        var x = rr.right + 18f * u
+        val x0 = rr.right + 18f * u
         if (v.rubrika.isNotEmpty()) {
-            tp.typeface = obican; tp.textSize = 21f * u; tp.letterSpacing = 0.16f; tp.color = 0xE6FFFFFF.toInt()
-            tp.setShadowLayer(6f * u, 0f, 1f * u, 0x99000000.toInt())
-            c.drawText(v.rubrika.uppercase(), x, top + 30f * u, tp)
-            x += tp.measureText(v.rubrika.uppercase())
+            tp.typeface = obican; tp.textSize = 21f * u; tp.letterSpacing = 0.16f; tp.color = al(0xE6FFFFFF.toInt(), a)
+            tp.setShadowLayer(6f * u, 0f, 1f * u, al(0x99000000.toInt(), a))
+            c.drawText(v.rubrika.uppercase(), x0, top + 30f * u, tp)
         }
         if (v.takodje.isNotEmpty()) {
-            tp.typeface = obican; tp.textSize = 19f * u; tp.letterSpacing = 0.02f; tp.color = 0xB3FFFFFF.toInt()
-            tp.setShadowLayer(6f * u, 0f, 1f * u, 0x99000000.toInt())
+            tp.typeface = obican; tp.textSize = 19f * u; tp.letterSpacing = 0.02f; tp.color = al(0xB3FFFFFF.toInt(), a)
+            tp.setShadowLayer(6f * u, 0f, 1f * u, al(0x99000000.toInt(), a))
             c.drawText("piše i: " + v.takodje.joinToString(" · ") { it.ime }, L, top + 78f * u, tp)
         }
         tp.clearShadowLayer()
 
         // ── naslov i uvod (odozdo nagore) ──
+        c.translate(0f, dy0)
         val sirina = (w * 0.74f).toInt()
         val r = raspored(v, sirina, u)
         var y = h - 74f * u
         r.uvod?.let { ul ->
             y -= ul.height
+            ul.paint.color = al(0xDDFFFFFF.toInt(), a)
+            ul.paint.setShadowLayer(6f * u, 0f, 1f * u, al(0x88000000.toInt(), a))
             c.save(); c.translate(L, y); ul.draw(c); c.restore()
             y -= 22f * u
         }
         y -= r.naslov.height
+        r.naslov.paint.color = al(0xFFFFFFFF.toInt(), a)
+        r.naslov.paint.setShadowLayer(10f * u, 0f, 2f * u, al(0x88000000.toInt(), a))
         c.save(); c.translate(L, y); r.naslov.draw(c); c.restore()
         y -= 20f * u
 
         // ── vrijeme objave + NOVO ──
-        x = L
+        var x = L
         val novo = v.stigla > 0 && sad - v.stigla < 30 * 60_000L
         if (novo) {
             tp.reset(); tp.isAntiAlias = true; tp.typeface = jak; tp.textSize = 22f * u; tp.letterSpacing = 0.12f
             val t = "NOVO"
             val tw = tp.measureText(t)
-            val puls = 0.75f + 0.25f * sin(sad / 300.0).toFloat()
+            val puls = if (sad - v.stigla < 5 * 60_000L) 0.75f + 0.25f * sin(sad / 300.0).toFloat() else 1f
             rr.set(x, y - 34f * u, x + tw + 28f * u, y + 4f * u)
-            fp.color = CRVENA; fp.alpha = (255 * (if (sad - v.stigla < 5 * 60_000L) puls else 1f)).toInt()
-            c.drawRoundRect(rr, 6f * u, 6f * u, fp); fp.alpha = 255
-            tp.color = 0xFFFFFFFF.toInt(); c.drawText(t, x + 14f * u, y - 7f * u, tp)
+            fp.color = al(CRVENA, a * puls)
+            c.drawRoundRect(rr, 6f * u, 6f * u, fp)
+            tp.color = al(0xFFFFFFFF.toInt(), a); c.drawText(t, x + 14f * u, y - 7f * u, tp)
             x = rr.right + 16f * u
         }
         tp.reset(); tp.isAntiAlias = true; tp.typeface = obican; tp.textSize = 23f * u; tp.letterSpacing = 0.03f
-        tp.color = 0xE6FFFFFF.toInt(); tp.setShadowLayer(6f * u, 0f, 1f * u, 0xAA000000.toInt())
+        tp.color = al(0xE6FFFFFF.toInt(), a); tp.setShadowLayer(6f * u, 0f, 1f * u, al(0xAA000000.toInt(), a))
         val kad = "${koliko(v.vrijeme, sad)}  ·  ${kadTacno(v.vrijeme, sad)}"
         c.drawText(kad, x, y - 7f * u, tp)
         if (novo) {
             x += tp.measureText(kad) + 16f * u
-            tp.color = 0xFFFF8A80.toInt()
+            tp.color = al(0xFFFF8A80.toInt(), a)
             c.drawText("·  stigla u ${satMin(v.stigla)}", x, y - 7f * u, tp)
         }
         tp.clearShadowLayer()
